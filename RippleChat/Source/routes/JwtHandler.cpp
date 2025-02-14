@@ -1,3 +1,6 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdlib.h>
+
 #include <unordered_set>
 #include "../Headers/routes/JwtHandler.hpp"
 #include <jwt-cpp/jwt.h>

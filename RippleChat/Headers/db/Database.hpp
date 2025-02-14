@@ -1,5 +1,7 @@
 #ifndef DATABASE_HPP
 #define DATABASE_HPP
+#define _CRT_SECURE_NO_WARNINGS
+#include <stdlib.h>
 
 #include <pqxx/pqxx>
 #include <memory>
@@ -8,6 +10,7 @@
 #include <mutex>
 #include "../Headers/utils/Config.hpp"
 #include "../Headers/utils/Logger.hpp"
+#include "../Headers/utils/QueryBuilder.hpp"
 
 class Database {
 public:
@@ -42,11 +45,21 @@ public:
             // Get a connection from the pool
             auto conn = getConnection();
 
-            // Start a new transaction
+           
+
+
+            // Build the query by replacing the placeholders
+            std::string finalQuery = utils::QueryBuilder::build(query, std::forward<Args>(params)...);
+
+            // Now you can execute the finalQuery with your database connection
+      ;
+
             pqxx::work txn(*conn);
 
             // Execute the query with the provided parameters
-            auto result = txn.exec_params(query, std::forward<Args>(params)...);
+            auto result = txn.exec(finalQuery);
+
+
 
             // Commit the transaction
             txn.commit();
@@ -63,6 +76,7 @@ public:
         }
     }
 
+
 private:
     // Private constructor for singleton
     Database() {
@@ -71,10 +85,22 @@ private:
 
     void initializeConnection() {
         try {
-            // Connection string can be fetched from a config or hardcoded
-            std::string connStr = "postgresql://Harizanov:920326@localhost:5432/RippleChat";
-            // In production, use Config::get("DB_CONNECTION_STRING");
 
+            const char* databaseUrl = std::getenv("DATABASE_URL");
+
+            if (!databaseUrl) {
+
+                utils::Logger::log("Error: DATABASE_URL not set!", utils::Logger::LogLevel::ERR);
+
+                throw std::runtime_error("DATABASE_URL environment variable is not set.");
+                
+            }
+
+
+
+            std::string connStr(databaseUrl);
+
+   
             // Create multiple connections and add them to the pool
             for (int i = 0; i < 5; ++i) {  // Let's assume we want a pool of 5 connections
                 auto conn = std::make_shared<pqxx::connection>(connStr);
