@@ -24,12 +24,17 @@ RUN apt-get update && apt-get install -y \
 
 # Install and setup vcpkg
 WORKDIR /opt
-RUN git clone https://github.com/microsoft/vcpkg && \
-    ./vcpkg/bootstrap-vcpkg.sh && \
-    ./vcpkg/vcpkg integrate install
-
-# Install required packages via vcpkg
-RUN /opt/vcpkg/vcpkg install crow libpqxx fmt nlohmann-json openssl
+    # Step 3: Install Crow (via vcpkg for easier handling)
+    RUN git clone https://github.com/microsoft/vcpkg /tmp/vcpkg && \
+        /tmp/vcpkg/bootstrap-vcpkg.sh && \
+        /tmp/vcpkg/vcpkg install crow && \
+        rm -rf /tmp/vcpkg
+    
+    # Step 4: Install jwt-cpp (header-only, no need to compile)
+    RUN git clone https://github.com/Thalhammer/jwt-cpp.git && \
+        mkdir -p /usr/local/include/jwt-cpp && \
+        cp -r jwt-cpp/include/jwt-cpp /usr/local/include/ && \
+        rm -rf jwt-cpp
 
 # Setup working directory
 WORKDIR /app
