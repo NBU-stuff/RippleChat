@@ -1,11 +1,10 @@
-# Use Ubuntu 22.04 as base image
-FROM ubuntu:22.04
+# Stage 1: Build environment
+FROM ubuntu:22.04 AS builder
 
-# Avoid prompts from apt
+# Prevent apt from asking for user input
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
 
-# Install build dependencies
+# Install basic build dependencies including autoconf and other required tools
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -13,45 +12,68 @@ RUN apt-get update && apt-get install -y \
     curl \
     zip \
     unzip \
+    tar \
     pkg-config \
+    ninja-build \
+    bison \
+    flex \
     libssl-dev \
-    libpq-dev \
-    libpqxx-dev \
-    nlohmann-json3-dev \
-    libfmt-dev \
-    && apt-get clean \
+    libreadline-dev \
+    zlib1g-dev \
+    autoconf \
+    automake \
+    libtool \
+    perl \
+    linux-headers-generic \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install and setup vcpkg
-WORKDIR /opt
-    # Step 3: Install Crow (via vcpkg for easier handling)
-    RUN git clone https://github.com/microsoft/vcpkg /tmp/vcpkg && \
-        /tmp/vcpkg/bootstrap-vcpkg.sh && \
-        /tmp/vcpkg/vcpkg install crow && \
-        rm -rf /tmp/vcpkg
-    
-    # Step 4: Install jwt-cpp (header-only, no need to compile)
-    RUN git clone https://github.com/Thalhammer/jwt-cpp.git && \
-        mkdir -p /usr/local/include/jwt-cpp && \
-        cp -r jwt-cpp/include/jwt-cpp /usr/local/include/ && \
-        rm -rf jwt-cpp
+# Set up vcpkg in a separate layer
+WORKDIR /vcpkg
+RUN git clone https://github.com/Microsoft/vcpkg.git . && \
+    ./bootstrap-vcpkg.sh && \
+    ./vcpkg integrate install
+ENV VCPKG_ROOT=/vcpkg
 
-# Setup working directory
+# Create a manifest file for vcpkg to cache dependencies
+WORKDIR /app
+COPY vcpkg.json .
+
+# Install dependencies using manifest mode
+RUN ${VCPKG_ROOT}/vcpkg install --triplet x64-linux --clean-after-build
+
+# Copy only necessary files
+COPY CMakeLists.txt .
+COPY Headers/ Headers/
+COPY Source/ Source/
+
+# Configure and build
+RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-linux \
+    -GNinja \
+    -DCMAKE_VERBOSE_MAKEFILE=ON
+
+RUN cmake --build build --config Release
+
+# Stage 2: Runtime environment
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the built executable and required shared libraries
+COPY --from=builder /app/build/bin/RippleChat /app/RippleChat
+
+# Set the working directory
 WORKDIR /app
 
-# Copy CMake files first
-COPY CMakeLists.txt .
-COPY RippleChat/CMakeLists.txt ./RippleChat/
-
-# Copy source files
-COPY RippleChat/Source ./RippleChat/Source
-COPY RippleChat/Headers ./RippleChat/Headers
-
-# Build the project
-RUN cmake -B build -S . \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake && \
-    cmake --build build --config Release
+# Expose the port your application uses
+EXPOSE 8080
 
 # Set the entry point
-CMD ["./build/bin/RippleChatApp"]
+CMD ["./RippleChat"]

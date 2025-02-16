@@ -1,0 +1,9 @@
+.git
+.gitignore
+build/
+out/
+*.md
+.vs/
+.vscode/
+**/*.o
+**/*.obj
