@@ -1,20 +1,13 @@
-version: '3.8'
-
 services:
   ripplechat:
     build:
       context: .
       dockerfile: Dockerfile
-      # Use BuildKit cache mount for vcpkg
       args:
         BUILDKIT_INLINE_CACHE: 1
     ports:
       - "8080:8080"
     volumes:
-      # Mount source code for development
-      - ./Source:/app/Source
-      - ./Headers:/app/Headers
-      # Mount vcpkg cache
       - vcpkg_cache:/vcpkg/downloads
 
 volumes:

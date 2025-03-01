@@ -1,79 +1,80 @@
-# Stage 1: Build environment
-FROM ubuntu:22.04 AS builder
 
-# Prevent apt from asking for user input
+# Stage 1: vcpkg cache layer
+FROM ubuntu:22.04 AS vcpkg-builder
+
 ENV DEBIAN_FRONTEND=noninteractive
+ENV VCPKG_ROOT=/vcpkg
 
-# Install basic build dependencies including autoconf and other required tools
+# Install minimal build requirements
 RUN apt-get update && apt-get install -y \
     build-essential \
+    autoconf \
     cmake \
-    git \
     curl \
     zip \
     unzip \
     tar \
-    pkg-config \
+    git \
     ninja-build \
-    bison \
-    flex \
-    libssl-dev \
-    libreadline-dev \
-    zlib1g-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Setup vcpkg
+WORKDIR /vcpkg
+RUN git clone https://github.com/Microsoft/vcpkg.git . && \
+    ./bootstrap-vcpkg.sh
+
+# Copy only vcpkg.json first to cache dependencies
+WORKDIR /app
+COPY vcpkg.json .
+
+# Install dependencies with vcpkg
+RUN ${VCPKG_ROOT}/vcpkg install \
+    --x-manifest-root=/app \
+    --triplet=x64-linux \
+    --clean-after-build
+
+# Stage 2: Project build layer
+FROM vcpkg-builder AS builder
+
+# Install additional build dependencies needed for libpq/PostgreSQL
+RUN apt-get update && apt-get install -y \
     autoconf \
     automake \
     libtool \
     perl \
-    linux-headers-generic \
     python3 \
+    bison \
+    flex \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up vcpkg in a separate layer
-WORKDIR /vcpkg
-RUN git clone https://github.com/Microsoft/vcpkg.git . && \
-    ./bootstrap-vcpkg.sh && \
-    ./vcpkg integrate install
-ENV VCPKG_ROOT=/vcpkg
-
-# Create a manifest file for vcpkg to cache dependencies
-WORKDIR /app
-COPY vcpkg.json .
-
-# Install dependencies using manifest mode
-RUN ${VCPKG_ROOT}/vcpkg install --triplet x64-linux --clean-after-build
-
-# Copy only necessary files
+# Copy project files
 COPY CMakeLists.txt .
 COPY Headers/ Headers/
 COPY Source/ Source/
 
-# Configure and build
+# Configure and build using cached vcpkg packages
 RUN cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_TARGET_TRIPLET=x64-linux \
-    -GNinja \
-    -DCMAKE_VERBOSE_MAKEFILE=ON
+    -GNinja
 
 RUN cmake --build build --config Release
 
-# Stage 2: Runtime environment
+# Stage 3: Runtime layer
 FROM ubuntu:22.04
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libpq5 \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the built executable and required shared libraries
+# Copy the built executable from the builder stage
 COPY --from=builder /app/build/bin/RippleChat /app/RippleChat
 
-# Set the working directory
 WORKDIR /app
-
-# Expose the port your application uses
 EXPOSE 8080
 
-# Set the entry point
 CMD ["./RippleChat"]
