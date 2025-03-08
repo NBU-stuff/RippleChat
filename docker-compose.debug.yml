@@ -1,0 +1,16 @@
+services:
+  debug:
+    build:
+      context: .
+      dockerfile: debug.Dockerfile
+    volumes:
+      - ./debug_logs:/debug_logs
+      - vcpkg_cache:/vcpkg/downloads
+    environment:
+      - VCPKG_FEATURE_FLAGS=manifests,binarycaching
+      - VCPKG_LOGS_PATH=/debug_logs
+      - VCPKG_DISABLE_METRICS=1
+      - VCPKG_FORCE_SYSTEM_BINARIES=1
+
+volumes:
+  vcpkg_cache:

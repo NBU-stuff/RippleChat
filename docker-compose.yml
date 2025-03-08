@@ -6,9 +6,16 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     ports:
-      - "8080:8080"
+      - '8080:8080'
     volumes:
       - vcpkg_cache:/vcpkg/downloads
+      - ./logs:/vcpkg/buildtrees/libpqxx # Mount logs directory to inspect build errors
+    environment:
+      - VCPKG_FEATURE_FLAGS=manifests,binarycaching
+      - VCPKG_KEEP_ENV_VARS=PATH
+      - VCPKG_BUILD_TYPE=release # Simplify by only building release version
+    # Use this for troubleshooting - comment out CMD in Dockerfile first
+    # command: tail -f /dev/null
 
 volumes:
   vcpkg_cache:

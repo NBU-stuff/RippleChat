@@ -1,11 +1,10 @@
-
-# Stage 1: vcpkg cache layer
+# Stage 1: vcpkg cache layer with separate libpqxx install
 FROM ubuntu:22.04 AS vcpkg-builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV VCPKG_ROOT=/vcpkg
 
-# Install minimal build requirements
+# Install build requirements
 RUN apt-get update && apt-get install -y \
     build-essential \
     autoconf \
@@ -17,6 +16,10 @@ RUN apt-get update && apt-get install -y \
     git \
     ninja-build \
     pkg-config \
+    postgresql-server-dev-all \
+    libpq-dev \
+    libssl-dev \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Setup vcpkg
@@ -24,11 +27,15 @@ WORKDIR /vcpkg
 RUN git clone https://github.com/Microsoft/vcpkg.git . && \
     ./bootstrap-vcpkg.sh
 
-# Copy only vcpkg.json first to cache dependencies
+# First install libpqxx separately (not in manifest mode)
+# We're specifying a specific older version that's known to work better
+RUN ${VCPKG_ROOT}/vcpkg install libpqxx:x64-linux --overlay-ports=${VCPKG_ROOT}/ports 
+
+# Create app directory and copy the vcpkg.json for other dependencies
 WORKDIR /app
 COPY vcpkg.json .
 
-# Install dependencies with vcpkg
+# Now install the rest of the dependencies using the manifest
 RUN ${VCPKG_ROOT}/vcpkg install \
     --x-manifest-root=/app \
     --triplet=x64-linux \
@@ -37,16 +44,14 @@ RUN ${VCPKG_ROOT}/vcpkg install \
 # Stage 2: Project build layer
 FROM vcpkg-builder AS builder
 
-# Install additional build dependencies needed for libpq/PostgreSQL
+# Install additional build dependencies
 RUN apt-get update && apt-get install -y \
     autoconf \
     automake \
     libtool \
     perl \
-    python3 \
     bison \
     flex \
-    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
@@ -54,7 +59,7 @@ COPY CMakeLists.txt .
 COPY Headers/ Headers/
 COPY Source/ Source/
 
-# Configure and build using cached vcpkg packages
+# Configure and build with CMake
 RUN cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake \
@@ -71,7 +76,7 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the built executable from the builder stage
+# Copy the built executable
 COPY --from=builder /app/build/bin/RippleChat /app/RippleChat
 
 WORKDIR /app
