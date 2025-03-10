@@ -22,9 +22,9 @@ crow::response routes::RegisterHandler::handleRegister(std::string method, const
         // Check if user exists
         std::string query = "SELECT 1 FROM users WHERE username = $1 LIMIT 1";
         auto userExists = db.executeQuery(query, username);
+        std::cout << "userExists.empty() " << userExists.empty() << std::endl;
 
-
-        if (userExists.empty()) {
+        if (!userExists.empty()) {
             nlohmann::json errorResponse;
             errorResponse["error"] = "Username already exists.";
             return utils::build_http_response(errorResponse.dump(), "409 Conflict");
